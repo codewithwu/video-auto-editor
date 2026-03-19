@@ -19,7 +19,7 @@ class Config:
 
     # API 配置
     API_HOST: str = "0.0.0.0"
-    API_PORT: int = 8000
+    API_PORT: int = 8081
 
     # CORS 配置
     CORS_ORIGINS: list[str] = [

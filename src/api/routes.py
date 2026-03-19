@@ -1,9 +1,11 @@
 """API 路由"""
 import json
 from pathlib import Path
+from typing import Optional
 
 from fastapi import FastAPI, File, HTTPException, UploadFile, Query
 from fastapi.responses import FileResponse, StreamingResponse
+from pydantic import BaseModel
 
 from src.api.models import CleanupResponse, ProcessRequest, ProcessStatus, UploadResponse
 from src.core.config import config
@@ -236,12 +238,51 @@ async def download_file(file_id: str):
         raise HTTPException(status_code=404, detail="文件不存在或已过期")
 
 
-@app.delete("/cleanup/{file_id}", response_model=CleanupResponse)
-async def cleanup_file(file_id: str = None):
-    """清理临时文件
+class CleanupRequest(BaseModel):
+    """清理请求"""
+
+    video_ids: list[str] = []
+    audio_id: Optional[str] = None
+    result_file_id: Optional[str] = None
+
+
+@app.post("/cleanup", response_model=CleanupResponse)
+async def cleanup_files(request: CleanupRequest = None):
+    """清理指定的临时文件
 
     Args:
-        file_id: 文件ID，为空时清理所有上传文件
+        request: 清理请求，包含要删除的文件ID列表
+
+    Returns:
+        清理状态
+    """
+    try:
+        # 清理上传的视频文件
+        if request and request.video_ids:
+            for file_id in request.video_ids:
+                file_manager.delete_file(file_id)
+
+        # 清理上传的音频文件
+        if request and request.audio_id:
+            file_manager.delete_file(request.audio_id)
+
+        # 清理合成的视频文件
+        if request and request.result_file_id:
+            # 查找并删除输出目录中的合成视频
+            for f in config.OUTPUT_DIR.glob(f"{request.result_file_id}_*.mp4"):
+                f.unlink()
+
+        return CleanupResponse(status="ok")
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@app.delete("/cleanup/{file_id}", response_model=CleanupResponse)
+async def cleanup_file(file_id: str = None):
+    """清理单个临时文件（兼容旧接口）
+
+    Args:
+        file_id: 文件ID
 
     Returns:
         清理状态

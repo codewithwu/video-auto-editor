@@ -10,7 +10,7 @@ st.set_page_config(
 )
 
 # API 地址
-API_BASE_URL = "http://localhost:8001"
+API_BASE_URL = "http://localhost:8081"
 
 
 def init_session_state():
@@ -162,12 +162,27 @@ def download_file_api(file_id):
         return None
 
 
-def cleanup_api():
-    """清理临时文件"""
+def cleanup_api(video_ids, audio_id, result_file_id):
+    """清理指定的临时文件
+
+    Args:
+        video_ids: 上传的视频文件ID列表
+        audio_id: 上传的音频文件ID
+        result_file_id: 合成的视频文件ID
+    """
     try:
-        requests.delete(f"{API_BASE_URL}/cleanup/", timeout=30)
+        response = requests.post(
+            f"{API_BASE_URL}/cleanup",
+            json={
+                "video_ids": video_ids,
+                "audio_id": audio_id,
+                "result_file_id": result_file_id,
+            },
+            timeout=30,
+        )
+        return response.status_code == 200
     except Exception:
-        pass
+        return False
 
 
 def reset_state():
@@ -316,9 +331,20 @@ def main():
     st.header("步骤4: 下载结果")
 
     if st.session_state.result_file_id:
+        # 下载文件内容
         file_content = download_file_api(st.session_state.result_file_id)
 
         if file_content:
+            # 下载完成后自动清理文件
+            cleanup_api(
+                st.session_state.video_ids,
+                st.session_state.audio_id,
+                st.session_state.result_file_id,
+            )
+
+            # 重置状态，避免重复清理
+            st.session_state.result_file_id = None
+
             st.download_button(
                 label="📥 下载合成视频",
                 data=file_content,
@@ -326,7 +352,9 @@ def main():
                 mime="video/mp4",
                 key="download_btn",
             )
-            st.info("文件已准备就绪，点击上方按钮下载。")
+            st.success("文件已准备就绪，点击上方按钮下载。清理操作已完成。")
+        else:
+            st.error("文件下载失败，请重试。")
     else:
         if st.session_state.processing:
             st.info("处理中，请稍候...")
